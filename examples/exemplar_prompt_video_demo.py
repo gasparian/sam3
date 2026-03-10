@@ -103,7 +103,7 @@ def main() -> None:
         required=True,
         help="Path to a video file or a directory of frames",
     )
-    parser.add_argument("--exemplar", required=True, help="Path to exemplar image")
+    parser.add_argument("--exemplar", default=None, help="Path to exemplar image")
     parser.add_argument("--prompt", default=None, help="Optional text prompt")
     parser.add_argument(
         "--mask",
@@ -157,7 +157,10 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    exemplar = Image.open(args.exemplar).convert("RGB")
+    if args.exemplar is None and args.prompt is None:
+        raise ValueError("Provide --prompt, --exemplar, or both")
+
+    exemplar = Image.open(args.exemplar).convert("RGB") if args.exemplar else None
     mask = Image.open(args.mask).convert("L") if args.mask else None
     crop_box = _parse_crop_box(args.crop)
 
@@ -176,14 +179,15 @@ def main() -> None:
     session = predictor.start_session(resource_path=args.resource)
     session_id = session["session_id"]
 
-    predictor.set_exemplar_prompt(
-        session_id=session_id,
-        exemplar=exemplar,
-        crop_box_xyxy=crop_box,
-        mask=mask,
-        mode=args.mode,
-        grid_size=args.grid_size,
-    )
+    if exemplar is not None:
+        predictor.set_exemplar_prompt(
+            session_id=session_id,
+            exemplar=exemplar,
+            crop_box_xyxy=crop_box,
+            mask=mask,
+            mode=args.mode,
+            grid_size=args.grid_size,
+        )
 
     if args.prompt:
         predictor.add_prompt(
@@ -191,7 +195,7 @@ def main() -> None:
             frame_idx=0,
             text=args.prompt,
         )
-    else:
+    elif exemplar is not None:
         predictor.add_prompt(
             session_id=session_id,
             frame_idx=0,

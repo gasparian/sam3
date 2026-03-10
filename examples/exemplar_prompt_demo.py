@@ -82,7 +82,7 @@ def _resolve_checkpoint_path(value: Optional[str]) -> Optional[str]:
 def main() -> None:
     parser = argparse.ArgumentParser(description="SAM3 exemplar prompt demo")
     parser.add_argument("--image", required=True, help="Path to target image")
-    parser.add_argument("--exemplar", required=True, help="Path to exemplar image")
+    parser.add_argument("--exemplar", default=None, help="Path to exemplar image")
     parser.add_argument("--prompt", default=None, help="Optional text prompt")
     parser.add_argument(
         "--mask",
@@ -120,7 +120,10 @@ def main() -> None:
     args = parser.parse_args()
 
     image = Image.open(args.image).convert("RGB")
-    exemplar = Image.open(args.exemplar).convert("RGB")
+    if args.exemplar is None and args.prompt is None:
+        raise ValueError("Provide --prompt, --exemplar, or both")
+
+    exemplar = Image.open(args.exemplar).convert("RGB") if args.exemplar else None
     mask = Image.open(args.mask).convert("L") if args.mask else None
     crop_box = _parse_crop_box(args.crop)
 
@@ -129,14 +132,15 @@ def main() -> None:
     processor = Sam3Processor(model)
 
     state = processor.set_image(image)
-    state = processor.set_exemplar_prompt(
-        exemplar,
-        state=state,
-        crop_box_xyxy=crop_box,
-        mask=mask,
-        mode=args.mode,
-        grid_size=args.grid_size,
-    )
+    if exemplar is not None:
+        state = processor.set_exemplar_prompt(
+            exemplar,
+            state=state,
+            crop_box_xyxy=crop_box,
+            mask=mask,
+            mode=args.mode,
+            grid_size=args.grid_size,
+        )
     if args.prompt:
         state = processor.set_text_prompt(args.prompt, state=state)
 
