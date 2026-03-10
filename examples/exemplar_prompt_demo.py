@@ -2,6 +2,7 @@
 
 import argparse
 import os
+from pathlib import Path
 from typing import Optional, Sequence
 
 import numpy as np
@@ -25,6 +26,29 @@ def _save_masks(output_dir: str, masks: np.ndarray) -> None:
     for idx, mask in enumerate(masks):
         mask_img = Image.fromarray((mask.astype(np.uint8) * 255))
         mask_img.save(os.path.join(output_dir, f"mask_{idx:03d}.png"))
+
+
+def _resolve_checkpoint_path(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    path = Path(value).expanduser()
+    if path.is_file():
+        return str(path)
+    if path.is_dir():
+        direct_ckpt = path / "sam3.pt"
+        if direct_ckpt.exists():
+            return str(direct_ckpt)
+        snapshots_dir = path / "snapshots"
+        if snapshots_dir.exists():
+            snapshot_paths = [p for p in snapshots_dir.iterdir() if p.is_dir()]
+            snapshot_paths.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+            for snapshot_path in snapshot_paths:
+                candidate = snapshot_path / "sam3.pt"
+                if candidate.exists():
+                    return str(candidate)
+    raise FileNotFoundError(
+        "Could not resolve sam3.pt under the provided checkpoint path"
+    )
 
 
 def main() -> None:
@@ -59,6 +83,11 @@ def main() -> None:
         default="exemplar_prompt_out",
         help="Directory to save output masks",
     )
+    parser.add_argument(
+        "--checkpoint-path",
+        default=None,
+        help="Optional SAM3 checkpoint path",
+    )
 
     args = parser.parse_args()
 
@@ -67,7 +96,8 @@ def main() -> None:
     mask = Image.open(args.mask).convert("L") if args.mask else None
     crop_box = _parse_crop_box(args.crop)
 
-    model = build_sam3_image_model()
+    checkpoint_path = _resolve_checkpoint_path(args.checkpoint_path)
+    model = build_sam3_image_model(checkpoint_path=checkpoint_path)
     processor = Sam3Processor(model)
 
     state = processor.set_image(image)
