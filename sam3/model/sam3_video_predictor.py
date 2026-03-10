@@ -75,6 +75,15 @@ class Sam3VideoPredictor:
                 bounding_box_labels=request.get("bounding_box_labels", None),
                 obj_id=request.get("obj_id", None),
             )
+        elif request_type == "set_exemplar_prompt":
+            return self.set_exemplar_prompt(
+                session_id=request["session_id"],
+                exemplar=request["exemplar"],
+                crop_box_xyxy=request.get("crop_box_xyxy", None),
+                mask=request.get("mask", None),
+                mode=request.get("mode", "grid"),
+                grid_size=request.get("grid_size", 14),
+            )
         elif request_type == "remove_object":
             return self.remove_object(
                 session_id=request["session_id"],
@@ -162,6 +171,28 @@ class Sam3VideoPredictor:
             obj_id=obj_id,
         )
         return {"frame_index": frame_idx, "outputs": outputs}
+
+    def set_exemplar_prompt(
+        self,
+        session_id: str,
+        exemplar,
+        crop_box_xyxy=None,
+        mask=None,
+        mode: str = "grid",
+        grid_size: int = 14,
+    ):
+        """Set a global exemplar prompt for a session."""
+        session = self._get_session(session_id)
+        inference_state = session["state"]
+        self.model.set_exemplar_prompt(
+            inference_state,
+            exemplar,
+            crop_box_xyxy=crop_box_xyxy,
+            mask=mask,
+            mode=mode,
+            grid_size=grid_size,
+        )
+        return {"is_success": True}
 
     def remove_object(
         self,

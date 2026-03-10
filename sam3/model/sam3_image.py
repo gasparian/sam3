@@ -442,10 +442,16 @@ class Sam3Image(torch.nn.Module):
         find_input,
         find_target,
         geometric_prompt: Prompt,
+        visual_prompt_embed=None,
+        visual_prompt_mask=None,
     ):
         with torch.profiler.record_function("SAM3Image._encode_prompt"):
             prompt, prompt_mask, backbone_out = self._encode_prompt(
-                backbone_out, find_input, geometric_prompt
+                backbone_out,
+                find_input,
+                geometric_prompt,
+                visual_prompt_embed=visual_prompt_embed,
+                visual_prompt_mask=visual_prompt_mask,
             )
         # Run the encoder
         with torch.profiler.record_function("SAM3Image._run_encoder"):
@@ -711,6 +717,8 @@ class Sam3ImageOnVideoMultiGPU(Sam3Image):
         run_nms=False,
         nms_prob_thresh=None,
         nms_iou_thresh=None,
+        visual_prompt_embed=None,
+        visual_prompt_mask=None,
         **kwargs,
     ):
         """
@@ -728,6 +736,8 @@ class Sam3ImageOnVideoMultiGPU(Sam3Image):
                     backbone_out=backbone_out,
                     find_inputs=find_inputs,
                     geometric_prompt=geometric_prompt,
+                    visual_prompt_embed=visual_prompt_embed,
+                    visual_prompt_mask=visual_prompt_mask,
                     frame_idx_begin=frame_idx_curr_b,
                     frame_idx_end=frame_idx_curr_e,
                     num_frames=num_frames,
@@ -775,6 +785,8 @@ class Sam3ImageOnVideoMultiGPU(Sam3Image):
                     backbone_out=backbone_out,
                     find_inputs=find_inputs,
                     geometric_prompt=geometric_prompt,
+                    visual_prompt_embed=visual_prompt_embed,
+                    visual_prompt_mask=visual_prompt_mask,
                     frame_idx_begin=frame_idx_next_b,
                     frame_idx_end=frame_idx_next_e,
                     num_frames=num_frames,
@@ -798,6 +810,8 @@ class Sam3ImageOnVideoMultiGPU(Sam3Image):
         run_nms=False,
         nms_prob_thresh=None,
         nms_iou_thresh=None,
+        visual_prompt_embed=None,
+        visual_prompt_mask=None,
     ):
         """Compute detection outputs on a chunk of frames and store their results in multigpu_buffer."""
         # each GPU computes detections on one frame in the chunk (in a round-robin manner)
@@ -809,6 +823,8 @@ class Sam3ImageOnVideoMultiGPU(Sam3Image):
                 find_input=find_inputs[frame_idx_local_gpu],
                 find_target=None,
                 geometric_prompt=geometric_prompt,
+                visual_prompt_embed=visual_prompt_embed,
+                visual_prompt_mask=visual_prompt_mask,
             )
         if run_nms:
             with torch.profiler.record_function("nms_masks"):

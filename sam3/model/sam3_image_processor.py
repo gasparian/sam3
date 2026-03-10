@@ -1,13 +1,14 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates. All Rights Reserved
 
 # pyre-unsafe
-from typing import Dict, List
+from typing import Dict, List, Optional, Sequence, Union
 
 import numpy as np
-import PIL
+from PIL import Image
 import torch
 from sam3.model import box_ops
 from sam3.model.data_misc import FindStage, interpolate
+from sam3.model.exemplar_prompt import build_exemplar_visual_prompt
 from torchvision.transforms import v2
 
 
@@ -44,7 +45,7 @@ class Sam3Processor:
         if state is None:
             state = {}
 
-        if isinstance(image, PIL.Image.Image):
+        if isinstance(image, Image.Image):
             width, height = image.size
         elif isinstance(image, (torch.Tensor, np.ndarray)):
             height, width = image.shape[-2:]
@@ -81,9 +82,7 @@ class Sam3Processor:
         if not isinstance(images, list):
             raise ValueError("Images must be a list of PIL images or tensors")
         assert len(images) > 0, "Images list must not be empty"
-        assert isinstance(images[0], PIL.Image.Image), (
-            "Images must be a list of PIL images"
-        )
+        assert isinstance(images[0], Image.Image), "Images must be a list of PIL images"
 
         state["original_heights"] = [image.height for image in images]
         state["original_widths"] = [image.width for image in images]
@@ -125,6 +124,45 @@ class Sam3Processor:
         return self._forward_grounding(state)
 
     @torch.inference_mode()
+    def set_exemplar_prompt(
+        self,
+        exemplar: Union[Image.Image, np.ndarray, torch.Tensor],
+        state: Dict,
+        *,
+        crop_box_xyxy: Optional[Sequence[float]] = None,
+        mask: Optional[Union[Image.Image, np.ndarray, torch.Tensor]] = None,
+        mode: str = "grid",
+        grid_size: int = 14,
+    ):
+        """Sets a global exemplar prompt and runs inference.
+
+        The exemplar can be a full image, a crop (via crop_box_xyxy), or a masked image.
+        """
+        if "backbone_out" not in state:
+            raise ValueError("You must call set_image before set_exemplar_prompt")
+        if "language_features" not in state["backbone_out"]:
+            dummy_text_outputs = self.model.backbone.forward_text(
+                ["visual"], device=self.device
+            )
+            state["backbone_out"].update(dummy_text_outputs)
+        if "geometric_prompt" not in state:
+            state["geometric_prompt"] = self.model._get_dummy_prompt()
+        visual_prompt_embed, visual_prompt_mask = build_exemplar_visual_prompt(
+            self.model.backbone,
+            exemplar,
+            device=torch.device(self.device),
+            image_size=self.resolution,
+            mode=mode,
+            grid_size=grid_size,
+            crop_box_xyxy=crop_box_xyxy,
+            mask=mask,
+            expected_dim=self.model.hidden_dim,
+        )
+        state["visual_prompt_embed"] = visual_prompt_embed
+        state["visual_prompt_mask"] = visual_prompt_mask
+        return self._forward_grounding(state)
+
+    @torch.inference_mode()
     def add_geometric_prompt(self, box: List, label: bool, state: Dict):
         """Adds a box prompt and run the inference.
         The image needs to be set, but not necessarily the text prompt.
@@ -163,7 +201,15 @@ class Sam3Processor:
                 if key in state["backbone_out"]:
                     del state["backbone_out"][key]
 
-        keys_to_del = ["geometric_prompt", "boxes", "masks", "masks_logits", "scores"]
+        keys_to_del = [
+            "geometric_prompt",
+            "boxes",
+            "masks",
+            "masks_logits",
+            "scores",
+            "visual_prompt_embed",
+            "visual_prompt_mask",
+        ]
         for key in keys_to_del:
             if key in state:
                 del state[key]
@@ -186,6 +232,8 @@ class Sam3Processor:
             find_input=self.find_stage,
             geometric_prompt=state["geometric_prompt"],
             find_target=None,
+            visual_prompt_embed=state.get("visual_prompt_embed"),
+            visual_prompt_mask=state.get("visual_prompt_mask"),
         )
 
         out_bbox = outputs["pred_boxes"]

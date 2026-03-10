@@ -14,6 +14,7 @@ from sam3.logger import get_logger
 from sam3.model.act_ckpt_utils import clone_output_wrapper
 from sam3.model.box_ops import box_xywh_to_cxcywh, box_xyxy_to_xywh
 from sam3.model.data_misc import BatchedDatapoint, convert_my_tensors, FindStage
+from sam3.model.exemplar_prompt import build_exemplar_visual_prompt
 from sam3.model.geometry_encoders import Prompt
 from sam3.model.io_utils import IMAGE_EXTS, load_resource_as_video_frames
 from sam3.model.sam3_tracker_utils import fill_holes_in_mask_scores
@@ -367,6 +368,7 @@ class Sam3VideoInference(Sam3VideoBase):
         has_geometric_prompt = (
             inference_state["per_frame_geometric_prompt"][frame_idx] is not None
         )
+        has_exemplar_prompt = inference_state["visual_prompt_embed"] is not None
         # run inference for the current frame
         (
             obj_id_to_mask,
@@ -385,13 +387,17 @@ class Sam3VideoInference(Sam3VideoBase):
                 if not has_geometric_prompt
                 else inference_state["per_frame_geometric_prompt"][frame_idx]
             ),
+            visual_prompt_embed=inference_state["visual_prompt_embed"],
+            visual_prompt_mask=inference_state["visual_prompt_mask"],
             tracker_states_local=tracker_states_local,
             tracker_metadata_prev=inference_state["tracker_metadata"],
             feature_cache=inference_state["feature_cache"],
             orig_vid_height=inference_state["orig_height"],
             orig_vid_width=inference_state["orig_width"],
             is_image_only=inference_state["is_image_only"],
-            allow_new_detections=has_text_prompt or has_geometric_prompt,
+            allow_new_detections=(
+                has_text_prompt or has_geometric_prompt or has_exemplar_prompt
+            ),
         )
         # update inference state
         inference_state["tracker_inference_states"] = tracker_states_local_new
@@ -837,6 +843,39 @@ class Sam3VideoInference(Sam3VideoBase):
         self.tracker.transformer.encoder.forward.set_logging(True)
 
     @torch.inference_mode()
+    def set_exemplar_prompt(
+        self,
+        inference_state,
+        exemplar,
+        *,
+        crop_box_xyxy=None,
+        mask=None,
+        mode: str = "grid",
+        grid_size: int = 14,
+    ):
+        visual_prompt_embed, visual_prompt_mask = build_exemplar_visual_prompt(
+            self.detector.backbone,
+            exemplar,
+            device=self.device,
+            image_size=self.image_size,
+            mode=mode,
+            grid_size=grid_size,
+            crop_box_xyxy=crop_box_xyxy,
+            mask=mask,
+            expected_dim=self.detector.hidden_dim,
+        )
+        inference_state["visual_prompt_embed"] = visual_prompt_embed
+        inference_state["visual_prompt_mask"] = visual_prompt_mask
+
+        if inference_state["text_prompt"] is None:
+            inference_state["input_batch"].find_text_batch[0] = "visual"
+            for t in range(inference_state["num_frames"]):
+                inference_state["input_batch"].find_inputs[t].text_ids[...] = (
+                    self.TEXT_ID_FOR_VISUAL
+                )
+        return inference_state
+
+    @torch.inference_mode()
     def add_prompt(
         self,
         inference_state,
@@ -863,7 +902,11 @@ class Sam3VideoInference(Sam3VideoBase):
         )
 
         # since it's a semantic prompt, we start over
+        saved_visual_prompt_embed = inference_state.get("visual_prompt_embed")
+        saved_visual_prompt_mask = inference_state.get("visual_prompt_mask")
         self.reset_state(inference_state)
+        inference_state["visual_prompt_embed"] = saved_visual_prompt_embed
+        inference_state["visual_prompt_mask"] = saved_visual_prompt_mask
 
         # 1) add text prompt
         if text_str is not None and text_str != "visual":
