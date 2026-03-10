@@ -28,6 +28,34 @@ def _save_masks(output_dir: str, masks: np.ndarray) -> None:
         mask_img.save(os.path.join(output_dir, f"mask_{idx:03d}.png"))
 
 
+def _overlay_masks(
+    image: Image.Image,
+    masks: np.ndarray,
+    alpha: float = 0.5,
+) -> Image.Image:
+    image_np = np.array(image.convert("RGB"), dtype=np.uint8)
+    overlay = image_np.copy()
+    palette = [
+        (230, 25, 75),
+        (60, 180, 75),
+        (255, 225, 25),
+        (0, 130, 200),
+        (245, 130, 48),
+        (145, 30, 180),
+        (70, 240, 240),
+        (240, 50, 230),
+        (210, 245, 60),
+        (250, 190, 212),
+    ]
+    for idx, mask in enumerate(masks):
+        color = palette[idx % len(palette)]
+        mask_bool = mask.astype(bool)
+        overlay[mask_bool] = (
+            (1 - alpha) * overlay[mask_bool] + alpha * np.array(color)
+        ).astype(np.uint8)
+    return Image.fromarray(overlay)
+
+
 def _resolve_checkpoint_path(value: Optional[str]) -> Optional[str]:
     if value is None:
         return None
@@ -117,6 +145,8 @@ def main() -> None:
         raise RuntimeError("No masks found in the output state")
     masks_np = masks.squeeze(1).cpu().numpy()
     _save_masks(args.output_dir, masks_np)
+    overlay_img = _overlay_masks(image.resize(masks_np.shape[-2:][::-1]), masks_np)
+    overlay_img.save(os.path.join(args.output_dir, "overlay.png"))
     print(f"Saved {len(masks_np)} masks to {args.output_dir}")
 
 
