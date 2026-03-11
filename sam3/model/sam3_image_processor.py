@@ -8,7 +8,7 @@ from PIL import Image
 import torch
 from sam3.model import box_ops
 from sam3.model.data_misc import FindStage, interpolate
-from sam3.model.exemplar_prompt import build_exemplar_visual_prompt
+from sam3.model.exemplar_prompt import build_exemplar_prompt_tokens
 from torchvision.transforms import v2
 
 
@@ -131,6 +131,8 @@ class Sam3Processor:
         *,
         crop_box_xyxy: Optional[Sequence[float]] = None,
         mask: Optional[Union[Image.Image, np.ndarray, torch.Tensor]] = None,
+        points_xy: Optional[Sequence[Sequence[float]]] = None,
+        point_labels: Optional[Sequence[int]] = None,
         mode: str = "grid",
         grid_size: int = 14,
     ):
@@ -147,16 +149,15 @@ class Sam3Processor:
             state["backbone_out"].update(dummy_text_outputs)
         if "geometric_prompt" not in state:
             state["geometric_prompt"] = self.model._get_dummy_prompt()
-        visual_prompt_embed, visual_prompt_mask = build_exemplar_visual_prompt(
-            self.model.backbone,
+        visual_prompt_embed, visual_prompt_mask = build_exemplar_prompt_tokens(
+            self.model,
             exemplar,
             device=torch.device(self.device),
             image_size=self.resolution,
-            mode=mode,
-            grid_size=grid_size,
             crop_box_xyxy=crop_box_xyxy,
             mask=mask,
-            expected_dim=self.model.hidden_dim,
+            points_xy=points_xy,
+            point_labels=point_labels,
         )
         state["visual_prompt_embed"] = visual_prompt_embed
         state["visual_prompt_mask"] = visual_prompt_mask

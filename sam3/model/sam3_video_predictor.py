@@ -81,6 +81,8 @@ class Sam3VideoPredictor:
                 exemplar=request["exemplar"],
                 crop_box_xyxy=request.get("crop_box_xyxy", None),
                 mask=request.get("mask", None),
+                points_xy=request.get("points_xy", None),
+                point_labels=request.get("point_labels", None),
                 mode=request.get("mode", "grid"),
                 grid_size=request.get("grid_size", 14),
             )
@@ -178,6 +180,8 @@ class Sam3VideoPredictor:
         exemplar,
         crop_box_xyxy=None,
         mask=None,
+        points_xy=None,
+        point_labels=None,
         mode: str = "grid",
         grid_size: int = 14,
     ):
@@ -189,6 +193,8 @@ class Sam3VideoPredictor:
             exemplar,
             crop_box_xyxy=crop_box_xyxy,
             mask=mask,
+            points_xy=points_xy,
+            point_labels=point_labels,
             mode=mode,
             grid_size=grid_size,
         )

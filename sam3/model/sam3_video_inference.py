@@ -14,7 +14,7 @@ from sam3.logger import get_logger
 from sam3.model.act_ckpt_utils import clone_output_wrapper
 from sam3.model.box_ops import box_xywh_to_cxcywh, box_xyxy_to_xywh
 from sam3.model.data_misc import BatchedDatapoint, convert_my_tensors, FindStage
-from sam3.model.exemplar_prompt import build_exemplar_visual_prompt
+from sam3.model.exemplar_prompt import build_exemplar_prompt_tokens
 from sam3.model.geometry_encoders import Prompt
 from sam3.model.io_utils import IMAGE_EXTS, load_resource_as_video_frames
 from sam3.model.sam3_tracker_utils import fill_holes_in_mask_scores
@@ -850,19 +850,20 @@ class Sam3VideoInference(Sam3VideoBase):
         *,
         crop_box_xyxy=None,
         mask=None,
+        points_xy=None,
+        point_labels=None,
         mode: str = "grid",
         grid_size: int = 14,
     ):
-        visual_prompt_embed, visual_prompt_mask = build_exemplar_visual_prompt(
-            self.detector.backbone,
+        visual_prompt_embed, visual_prompt_mask = build_exemplar_prompt_tokens(
+            self.detector,
             exemplar,
             device=self.device,
             image_size=self.image_size,
-            mode=mode,
-            grid_size=grid_size,
             crop_box_xyxy=crop_box_xyxy,
             mask=mask,
-            expected_dim=self.detector.hidden_dim,
+            points_xy=points_xy,
+            point_labels=point_labels,
         )
         inference_state["visual_prompt_embed"] = visual_prompt_embed
         inference_state["visual_prompt_mask"] = visual_prompt_mask
